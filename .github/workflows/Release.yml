@@ -12,8 +12,8 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.generate_version.outputs.version }} # version ไม่มี v
-      tag_version: ${{ steps.generate_version.outputs.tag_version }} # version มี v
+      version: ${{ steps.generate_version.outputs.version }}
+      tag_version: ${{ steps.generate_version.outputs.tag_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
@@ -51,7 +51,7 @@ jobs:
   format:
     needs: version
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15 # เพิ่ม timeout
     permissions:
       contents: read
     steps:
@@ -64,18 +64,13 @@ jobs:
           dotnet-version: 9.0.x
 
       - name: Build
-        run: >
-          dotnet build
-          -p:CSharpier_Bypass=true
-          --configuration Release
+        run: |
+          dotnet build -p:CSharpier_Bypass=true --configuration Release -v detailed # เพิ่ม verbosity
 
       - name: Verify formatting
         id: verify
-        run: >
-          dotnet build
-          -t:CSharpierFormat
-          --configuration Release
-          --no-restore
+        run: |
+          dotnet build -t:CSharpierFormat --configuration Release --no-restore -v detailed
 
       - name: Report issues
         if: ${{ failure() && steps.verify.outcome == 'failure' }}
@@ -98,8 +93,8 @@ jobs:
           - bundle-ffmpeg: false
             artifact-name-base: YoutubeDownloader.Bare
 
-    runs-on: ${{ startsWith(matrix.rid, 'win-') && 'windows-latest' || startsWith(matrix.rid, 'osx-') && 'macos-latest' || 'ubuntu-latest' }}
-    timeout-minutes: 10
+    runs-on: windows-latest # ใช้ windows-latest เฉพาะ เพื่อความเสถียรกับ Windows RID
+    timeout-minutes: 20 # เพิ่ม timeout ให้เพียงพอ
     permissions:
       actions: write
       contents: read
@@ -118,14 +113,15 @@ jobs:
         run: YoutubeDownloader/DownloadFFmpeg.ps1 -platform ${{ matrix.rid }}
 
       - name: Publish app
-        run: >
-          dotnet publish YoutubeDownloader
-          -p:Version=${{ needs.version.outputs.version }} # ใช้ version ที่ไม่มี v
-          -p:CSharpier_Bypass=true
-          --output YoutubeDownloader/bin/publish
-          --configuration Release
-          --runtime ${{ matrix.rid }}
-          --self-contained
+        run: |
+          dotnet publish YoutubeDownloader `
+            -p:Version=${{ needs.version.outputs.version }} `
+            -p:CSharpier_Bypass=true `
+            --output YoutubeDownloader/bin/publish `
+            --configuration Release `
+            --runtime ${{ matrix.rid }} `
+            --self-contained `
+            -v detailed # เพิ่ม verbosity เพื่อ debug
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4.6.0
@@ -152,7 +148,7 @@ jobs:
             artifact-name-base: YoutubeDownloader.Bare
 
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       actions: read
       contents: write
@@ -166,14 +162,6 @@ jobs:
           name: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}
           path: YoutubeDownloader/
 
-      - name: Set permissions (app)
-        if: ${{ !startsWith(matrix.rid, 'win-') }}
-        run: chmod +x YoutubeDownloader/YoutubeDownloader
-
-      - name: Set permissions (FFmpeg)
-        if: ${{ !startsWith(matrix.rid, 'win-') && matrix.bundle-ffmpeg }}
-        run: chmod +x YoutubeDownloader/ffmpeg
-
       - name: Create package
         working-directory: YoutubeDownloader/
         run: zip -r ../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip .
@@ -181,7 +169,7 @@ jobs:
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.version.outputs.tag_version }} # ใช้ tag_version ที่มี v
+          tag_name: ${{ needs.version.outputs.tag_version }}
           files: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip
           fail_on_unmatched_files: true
           generate_release_notes: true
