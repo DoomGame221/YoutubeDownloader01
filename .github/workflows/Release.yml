@@ -107,7 +107,7 @@ jobs:
       - name: Publish app
         run: >
           dotnet publish YoutubeDownloader
-          -p:Version=${{ needs.create-tag.outputs.new_tag }}
+          -p:Version=v1.0.0
           -p:CSharpier_Bypass=true
           --output YoutubeDownloader/bin/publish
           --configuration Release
