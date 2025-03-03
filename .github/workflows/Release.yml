@@ -13,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.generate_version.outputs.version }}
-      plain_version: ${{ steps.generate_version.outputs.plain_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
@@ -27,19 +26,15 @@ jobs:
           
           if [ -z "$latest_tag" ]; then
             new_version="v1.0.0"
-            plain_version="1.0.0"
           else
             version_num=${latest_tag#v}
             IFS='.' read -r major minor patch <<< "$version_num"
             new_patch=$((patch + 1))
             new_version="v${major}.${minor}.${new_patch}"
-            plain_version="${major}.${minor}.${new_patch}"
           fi
           
           echo "New version: $new_version"
-          echo "Plain version: $plain_version"
           echo "version=$new_version" >> $GITHUB_OUTPUT
-          echo "plain_version=$plain_version" >> $GITHUB_OUTPUT
 
       - name: Create and push tag
         run: |
@@ -101,6 +96,7 @@ jobs:
     runs-on: ${{ startsWith(matrix.rid, 'win-') && 'windows-latest' || startsWith(matrix.rid, 'osx-') && 'macos-latest' || 'ubuntu-latest' }}
     timeout-minutes: 10
     permissions:
+      actions: write
       contents: read
     steps:
       - name: Checkout
@@ -119,7 +115,7 @@ jobs:
       - name: Publish app
         run: >
           dotnet publish YoutubeDownloader
-          -p:Version=${{ needs.version.outputs.plain_version }}
+          -p:Version=${{ needs.version.outputs.version }}
           -p:CSharpier_Bypass=true
           --output YoutubeDownloader/bin/publish
           --configuration Release
@@ -135,7 +131,7 @@ jobs:
 
   deploy:
     needs: pack
-    Strategy:
+    strategy:
       matrix:
         rid:
           - win-arm64
@@ -153,6 +149,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
+      actions: read
       contents: write
     steps:
       - name: Checkout
@@ -164,20 +161,30 @@ jobs:
           name: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}
           path: YoutubeDownloader/
 
-      - name: Create zip package
+      - name: Set permissions (app)
+        if: ${{ !startsWith(matrix.rid, 'win-') }}
+        run: chmod +x YoutubeDownloader/YoutubeDownloader
+
+      - name: Set permissions (FFmpeg)
+        if: ${{ !startsWith(matrix.rid, 'win-') && matrix.bundle-ffmpeg }}
+        run: chmod +x YoutubeDownloader/ffmpeg
+
+      - name: Create package
         working-directory: YoutubeDownloader/
         run: zip -r ../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip .
 
-      - name: Upload release assets
+      - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ needs.version.outputs.version }}
           files: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   notify:
-    needs: deploy
+    needs: [version, deploy]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -194,6 +201,6 @@ jobs:
             {
               "username": "GitHub Actions",
               "avatar_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
-              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nVersion: ${{ needs.version.outputs.version }}\nดูรายละเอียดได้ที่: <https://github.com/DoomGame221/YoutubeDownloader01/releases/${{ needs.version.outputs.version }}>"
+              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nVersion: ${{ needs.version.outputs.version }}\nดาวน์โหลดได้ที่: <https://github.com/DoomGame221/YoutubeDownloader01/releases/${{ needs.version.outputs.version }}>"
             }
           retry-count: 5
