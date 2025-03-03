@@ -30,7 +30,6 @@ jobs:
           dotnet build
           -p:CSharpier_Bypass=true
           --configuration Release
-
       - name: Verify formatting
         id: verify
         run: >
@@ -38,7 +37,6 @@ jobs:
           -t:CSharpierFormat
           --configuration Release
           --no-restore
-
       - name: Report issues
         if: ${{ failure() && steps.verify.outcome == 'failure' }}
         run: echo "::error title=Bad formatting::Formatting issues detected. Please build the solution locally to fix them."
@@ -50,6 +48,10 @@ jobs:
           - win-arm64
           - win-x86
           - win-x64
+#          - linux-arm64
+#          - linux-x64
+#          - osx-arm64
+#          - osx-x64
         bundle-ffmpeg:
           - true
           - false
@@ -92,7 +94,6 @@ jobs:
           --configuration Release
           --runtime ${{ matrix.rid }}
           --self-contained
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4.6.0
         with:
@@ -109,6 +110,10 @@ jobs:
           - win-arm64
           - win-x86
           - win-x64
+#          - linux-arm64
+#          - linux-x64
+#          - osx-arm64
+#          - osx-x64
         bundle-ffmpeg:
           - true
           - false
@@ -125,18 +130,10 @@ jobs:
     timeout-minutes: 10
 
     permissions:
-      actions: write
+      actions: read
       contents: write
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4.2.2
-
-      - name: Install .NET
-        uses: actions/setup-dotnet@v4.3.0
-        with:
-          dotnet-version: 9.0.x
-
       - name: Download artifacts
         uses: actions/download-artifact@v4.1.8
         with:
@@ -155,44 +152,11 @@ jobs:
         working-directory: YoutubeDownloader/
         run: zip -r ../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip .
 
-      # Create and push a new tag automatically
-      - name: Get latest tag
-        id: get_latest_tag
-        run: |
-          TAG=$(git describe --tags --abbrev=0)
-          echo "Latest tag is $TAG"
-          echo "TAG=$TAG" >> $GITHUB_ENV
-
-      - name: Increment version
-        id: increment_version
-        run: |
-          IFS='.' read -r -a version_parts <<< "${{ env.TAG }}"
-          patch=${version_parts[2]}
-          new_patch=$((patch + 1))
-          new_version="${version_parts[0]}.${version_parts[1]}.$new_patch"
-          echo "New version is $new_version"
-          echo "VERSION=$new_version" >> $GITHUB_ENV
-
-      - name: Create new git tag
-        run: |
-          git tag ${{ env.VERSION }}
-          git push origin ${{ env.VERSION }}
-
-      - name: Create GitHub release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.VERSION }}
-          files: "../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"
-
       - name: Upload release asset
-        uses: actions/upload-release-asset@v1
-        with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: "../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"
-          asset_name: "${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"
-          asset_content_type: application/zip
-
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          echo "Release upload skipped since tag-based releases have been removed."
   notify:
     needs: deploy
     runs-on: ubuntu-latest
