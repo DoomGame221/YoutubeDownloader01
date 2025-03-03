@@ -176,9 +176,11 @@ jobs:
           url: ${{ secrets.DISCORD_WEBHOOK }}
           method: POST
           headers: |
-            Content-Type: application/json
+            Content-Type: application/json; charset=UTF-8
           body: |
             {
-              "content": "**${{ github.event.repository.name }}** มีอัปเดตใหม่!"
+              "username": "GitHub Actions",
+              "avatar_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nดาวน์โหลดเวอร์ชันล่าสุดได้ที่: [คลิกที่นี่](<https://github.com/${{ github.repository }}/releases/latest>)"
             }
           retry-count: 5
