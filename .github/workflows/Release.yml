@@ -13,31 +13,33 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.generate_version.outputs.version }}
+      plain_version: ${{ steps.generate_version.outputs.plain_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
         with:
-          fetch-depth: 0 # เพื่อให้ได้ history ทั้งหมดสำหรับตรวจสอบ tags
+          fetch-depth: 0
 
       - name: Generate version
         id: generate_version
         run: |
-          # หา latest tag
           latest_tag=$(git tag --list 'v*' | sort -V | tail -n 1)
           
           if [ -z "$latest_tag" ]; then
-            # ถ้าไม่มี tag เลย เริ่มที่ v1.0.0
             new_version="v1.0.0"
+            plain_version="1.0.0"
           else
-            # ลบ v ออกแล้วคำนวณ version ใหม่
             version_num=${latest_tag#v}
             IFS='.' read -r major minor patch <<< "$version_num"
             new_patch=$((patch + 1))
             new_version="v${major}.${minor}.${new_patch}"
+            plain_version="${major}.${minor}.${new_patch}"
           fi
           
           echo "New version: $new_version"
+          echo "Plain version: $plain_version"
           echo "version=$new_version" >> $GITHUB_OUTPUT
+          echo "plain_version=$plain_version" >> $GITHUB_OUTPUT
 
       - name: Create and push tag
         run: |
@@ -117,7 +119,7 @@ jobs:
       - name: Publish app
         run: >
           dotnet publish YoutubeDownloader
-          -p:Version=${{ needs.version.outputs.version }}
+          -p:Version=${{ needs.version.outputs.plain_version }}
           -p:CSharpier_Bypass=true
           --output YoutubeDownloader/bin/publish
           --configuration Release
