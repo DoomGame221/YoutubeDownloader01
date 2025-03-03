@@ -50,6 +50,10 @@ jobs:
           - win-arm64
           - win-x86
           - win-x64
+          - linux-arm64
+          - linux-x64
+          - osx-arm64
+          - osx-x64
         bundle-ffmpeg:
           - true
           - false
@@ -109,6 +113,10 @@ jobs:
           - win-arm64
           - win-x86
           - win-x64
+          - linux-arm64
+          - linux-x64
+          - osx-arm64
+          - osx-x64
         bundle-ffmpeg:
           - true
           - false
@@ -163,15 +171,14 @@ jobs:
 
     steps:
       - name: Notify Discord
-        uses: DoomGame221/action-http-request@1.1.3
+        uses: doomgame221/action-http-request@1.1.3
         with:
           url: ${{ secrets.DISCORD_WEBHOOK }}
           method: POST
           headers: |
-            Content-Type: application/json; charset=UTF-8
+            Content-Type: application/json
           body: |
             {
-              "avatar_url": "https://raw.githubusercontent.com/${{ github.event.repository.full_name }}/main/favicon.png",
-              "content": "[**${{ github.event.repository.name }}**](<${{ github.event.repository.html_url }}>) has been updated!"
+              "content": "**${{ github.event.repository.name }}** มีอัปเดตใหม่!"
             }
           retry-count: 5
