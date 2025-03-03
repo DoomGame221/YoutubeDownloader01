@@ -10,7 +10,6 @@ env:
 
 jobs:
   format:
-    # คงเดิม ไม่ต้องแก้ไข
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -39,13 +38,88 @@ jobs:
         run: echo "::error title=Bad formatting::Formatting issues detected. Please build the solution locally to fix them."
 
   pack:
-    # คงเดิม ไม่ต้องแก้ไข
-    # ... (ส่วน matrix และ steps เดิมทั้งหมด)
+    strategy:
+      matrix:
+        rid:
+          - win-arm64
+          - win-x86
+          - win-x64
+#          - linux-arm64
+#          - linux-x64
+#          - osx-arm64
+#          - osx-x64
+        bundle-ffmpeg:
+          - true
+          - false
+        include:
+          - bundle-ffmpeg: true
+            artifact-name-base: YoutubeDownloader
+          - bundle-ffmpeg: false
+            artifact-name-base: YoutubeDownloader.Bare
+        exclude:
+          - bundle-ffmpeg: true
+            rid: linux-arm64
+
+    runs-on: ${{ startsWith(matrix.rid, 'win-') && 'windows-latest' || startsWith(matrix.rid, 'osx-') && 'macos-latest' || 'ubuntu-latest' }}
+    timeout-minutes: 10
+
+    permissions:
+      actions: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4.3.0
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Download FFmpeg
+        if: ${{ matrix.bundle-ffmpeg }}
+        shell: pwsh
+        run: YoutubeDownloader/DownloadFFmpeg.ps1 -platform ${{ matrix.rid }}
+
+      - name: Publish app
+        run: >
+          dotnet publish YoutubeDownloader
+          -p:Version=999.9.9-ci-${{ github.sha }}
+          -p:CSharpier_Bypass=true
+          --output YoutubeDownloader/bin/publish
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4.6.0
+        with:
+          name: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}
+          path: YoutubeDownloader/bin/publish
+          if-no-files-found: error
 
   deploy:
     needs: pack
     strategy:
-      # ... (matrix เดิมทั้งหมด)
+      matrix:
+        rid:
+          - win-arm64
+          - win-x86
+          - win-x64
+#          - linux-arm64
+#          - linux-x64
+#          - osx-arm64
+#          - osx-x64
+        bundle-ffmpeg:
+          - true
+          - false
+        include:
+          - bundle-ffmpeg: true
+            artifact-name-base: YoutubeDownloader
+          - bundle-ffmpeg: false
+            artifact-name-base: YoutubeDownloader.Bare
+        exclude:
+          - bundle-ffmpeg: true
+            rid: linux-arm64
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
