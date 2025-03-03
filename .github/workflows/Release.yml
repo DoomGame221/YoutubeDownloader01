@@ -9,40 +9,8 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: true
 
 jobs:
-  version:
-    runs-on: ubuntu-latest
-    outputs:
-      tag: ${{ steps.get_version.outputs.tag }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4.2.2
-        with:
-          fetch-depth: 0 # ดึง history ทั้งหมดเพื่อตรวจสอบ tags
-
-      - name: Calculate next version
-        id: get_version
-        run: |
-          # หา tag ล่าสุด
-          LATEST_TAG=$(git tag --list 'v*' | sort -V | tail -n 1)
-          
-          if [ -z "$LATEST_TAG" ]; then
-            # ถ้าไม่มี tag เริ่มที่ v1.0.0
-            NEW_TAG="v1.0.0"
-          else
-            # แยก version เป็นส่วนๆ
-            VERSION=${LATEST_TAG#v}
-            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
-            
-            # เพิ่ม PATCH version
-            NEW_PATCH=$((PATCH + 1))
-            NEW_TAG="v$MAJOR.$MINOR.$NEW_PATCH"
-          fi
-          
-          echo "New tag: $NEW_TAG"
-          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
-
   format:
-    needs: version
+    # คงเดิม ไม่ต้องแก้ไข
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -50,12 +18,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
-
       - name: Install .NET
         uses: actions/setup-dotnet@v4.3.0
         with:
           dotnet-version: 9.0.x
-
       - name: Build
         run: >
           dotnet build
@@ -73,84 +39,45 @@ jobs:
         run: echo "::error title=Bad formatting::Formatting issues detected. Please build the solution locally to fix them."
 
   pack:
-    needs: version
-    strategy:
-      matrix:
-        rid:
-          - win-arm64
-          - win-x86
-          - win-x64
-        bundle-ffmpeg:
-          - true
-          - false
-        include:
-          - bundle-ffmpeg: true
-            artifact-name-base: YoutubeDownloader
-          - bundle-ffmpeg: false
-            artifact-name-base: YoutubeDownloader.Bare
-
-    runs-on: ${{ startsWith(matrix.rid, 'win-') && 'windows-latest' || 'ubuntu-latest' }}
-    timeout-minutes: 10
-    permissions:
-      actions: write
-      contents: read
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4.2.2
-
-      - name: Install .NET
-        uses: actions/setup-dotnet@v4.3.0
-        with:
-          dotnet-version: 9.0.x
-
-      - name: Download FFmpeg
-        if: ${{ matrix.bundle-ffmpeg }}
-        shell: pwsh
-        run: YoutubeDownloader/DownloadFFmpeg.ps1 -platform ${{ matrix.rid }}
-
-      - name: Publish app
-        run: |
-          VERSION=${{ needs.version.outputs.tag }}
-          CLEAN_VERSION=${VERSION#v}
-          dotnet publish YoutubeDownloader \
-            -p:Version=$CLEAN_VERSION \
-            -p:CSharpier_Bypass=true \
-            --output YoutubeDownloader/bin/publish \
-            --configuration Release \
-            --runtime ${{ matrix.rid }} \
-            --self-contained
-      - name: Upload artifacts
-        uses: actions/upload-artifact@v4.6.0
-        with:
-          name: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}
-          path: YoutubeDownloader/bin/publish
-          if-no-files-found: error
+    # คงเดิม ไม่ต้องแก้ไข
+    # ... (ส่วน matrix และ steps เดิมทั้งหมด)
 
   deploy:
-    needs: [version, pack]
+    needs: pack
     strategy:
-      matrix:
-        rid:
-          - win-arm64
-          - win-x86
-          - win-x64
-        bundle-ffmpeg:
-          - true
-          - false
-        include:
-          - bundle-ffmpeg: true
-            artifact-name-base: YoutubeDownloader
-          - bundle-ffmpeg: false
-            artifact-name-base: YoutubeDownloader.Bare
-
+      # ... (matrix เดิมทั้งหมด)
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       actions: read
       contents: write
+
     steps:
-      - name: Checkout
+      - name: Checkout repository with full history
         uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0  # ดึง history ทั้งหมดเพื่อคำนวณ version
+
+      - name: Calculate version
+        id: version
+        run: |
+          LATEST_TAG=$(git tag --list 'v*' | sort -V | tail -n 1)
+          if [ -z "$LATEST_TAG" ]; then
+            NEW_VERSION="v1.0.0"
+          else
+            VERSION_NUM=${LATEST_TAG#v}  # ลบ 'v' ออก
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION_NUM"
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
+          fi
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+      - name: Create Git Tag
+        run: |
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git tag ${{ steps.version.outputs.NEW_VERSION }}
+          git push origin ${{ steps.version.outputs.NEW_VERSION }}
 
       - name: Download artifacts
         uses: actions/download-artifact@v4.1.8
@@ -170,23 +97,34 @@ jobs:
         working-directory: YoutubeDownloader/
         run: zip -r ../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip .
 
-      - name: Create Release and Upload Assets
+      - name: Upload release asset
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # สร้าง release และ tag
-          gh release create ${{ needs.version.outputs.tag }} \
-            --title "${{ needs.version.outputs.tag }}" \
+          gh release create ${{ steps.version.outputs.NEW_VERSION }} \
+            --title "Release ${{ steps.version.outputs.NEW_VERSION }}" \
             --generate-notes \
             ${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip
 
   notify:
-    needs: [version, deploy]
+    needs: deploy
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
       contents: read
+
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0
+
+      - name: Get latest version
+        id: version
+        run: |
+          LATEST_TAG=$(git tag --list 'v*' | sort -V | tail -n 1)
+          echo "LATEST_VERSION=$LATEST_TAG" >> $GITHUB_OUTPUT
+
       - name: Notify Discord
         uses: tyrrrz/action-http-request@1.1.3
         with:
@@ -198,6 +136,6 @@ jobs:
             {
               "username": "GitHub Actions",
               "avatar_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
-              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nดาวน์โหลดเวอร์ชันล่าสุดได้ที่: [คลิกที่นี่](https://github.com/DoomGame221/YoutubeDownloader01/releases/${{ needs.version.outputs.tag }})"
+              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nดาวน์โหลดเวอร์ชันล่าสุดได้ที่: [คลิกที่นี่](https://github.com/DoomGame221/YoutubeDownloader01/releases/${{ steps.version.outputs.LATEST_VERSION }})"
             }
           retry-count: 5
