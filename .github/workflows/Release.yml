@@ -144,6 +144,6 @@ jobs:
             {
               "username": "GitHub Actions",
               "avatar_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
-              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nVersion: ${{ needs.version.outputs.version }}\nดูรายละเอียดได้ที่: <https://github.com/${{ github.repository }}/releases/tag/${{ needs.version.outputs.version }}>"
+              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nVersion: ${{ needs.version.outputs.version }}\nดูรายละเอียดได้ที่: <https://github.com/DoomGame221/YoutubeDownloader01/releases/${{ needs.version.outputs.version }}>"
             }
           retry-count: 5
