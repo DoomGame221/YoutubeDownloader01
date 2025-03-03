@@ -102,14 +102,12 @@ jobs:
       - name: Get latest tag
         id: get_tag
         run: |
-          # ดึง tag ล่าสุดที่ตรงรูปแบบ vX.X.X เท่านั้น (ไม่รวม ci หรือข้อความอื่น)
+          # ดึง tag ล่าสุดที่ตรงรูปแบบ vX.X.X เท่านั้น
           latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]' --sort=-v:refname | head -n 1)
           if [ -z "$latest_tag" ]; then
-            # ถ้าไม่มี tag ให้เริ่มที่ v1.0.0
             echo "tag=v1.0.0" >> $GITHUB_OUTPUT
           else
-            # แยกส่วน version และเพิ่ม 0.0.1
-            version=${latest_tag#v}  # ลบ 'v' ออก
+            version=${latest_tag#v}
             IFS='.' read -r major minor patch <<< "$version"
             new_patch=$((patch + 1))
             new_version="$major.$minor.$new_patch"
@@ -121,11 +119,20 @@ jobs:
         with:
           path: artifacts
 
+      - name: Prepare artifacts for upload
+        run: |
+          mkdir -p release_assets
+          for dir in artifacts/*; do
+            if [ -d "$dir" ]; then
+              base_name=$(basename "$dir")
+              zip -r "release_assets/$base_name.zip" "$dir"
+            fi
+          done
+
       - name: Create or Update Release
         id: create_release
         run: |
           TAG=${{ steps.get_tag.outputs.tag }}
-          # ตรวจสอบว่า tag มีอยู่แล้วหรือไม่
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG exists, using existing release"
           else
@@ -141,10 +148,10 @@ jobs:
       - name: Upload Release Assets
         run: |
           TAG=${{ steps.get_tag.outputs.tag }}
-          for artifact in artifacts/*/*.zip; do
-            if [ -f "$artifact" ]; then
-              gh release upload "$TAG" "$artifact" --clobber
-              echo "Uploaded $artifact to $TAG"
+          for asset in release_assets/*.zip; do
+            if [ -f "$asset" ]; then
+              gh release upload "$TAG" "$asset" --clobber
+              echo "Uploaded $asset to $TAG"
             fi
           done
         env:
