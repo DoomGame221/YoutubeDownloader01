@@ -96,32 +96,60 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
-      contents: write  # จำเป็นสำหรับการสร้าง release
+      contents: write  # จำเป็นสำหรับการสร้างและแก้ไข release
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
+        with:
+          fetch-depth: 0  # ดึง history ทั้งหมดเพื่อตรวจสอบ tags
+
+      - name: Get latest tag
+        id: get_tag
+        run: |
+          # ดึง tag ล่าสุดที่ตรงรูปแบบ vX.X.X
+          latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+          if [ -z "$latest_tag" ]; then
+            # ถ้าไม่มี tag ให้เริ่มที่ v1.0.0
+            echo "tag=v1.0.0" >> $GITHUB_OUTPUT
+          else
+            # แยกส่วน version และเพิ่ม 0.0.1
+            version=${latest_tag#v}  # ลบ 'v' ออก
+            IFS='.' read -r major minor patch <<< "$version"
+            new_patch=$((patch + 1))
+            new_version="$major.$minor.$new_patch"
+            echo "tag=v$new_version" >> $GITHUB_OUTPUT
+          fi
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4.1.8
         with:
           path: artifacts
 
-      - name: Create Release
+      - name: Create or Update Release
         id: create_release
-        uses: actions/create-release@v1
+        run: |
+          TAG=${{ steps.get_tag.outputs.tag }}
+          # ตรวจสอบว่า tag มีอยู่แล้วหรือไม่
+          if git rev-parse "$TAG" >/dev/null 2>&1; then
+            echo "Tag $TAG exists, using existing release"
+            echo "release exists, will update assets"
+          else
+            gh release create "$TAG" \
+              --title "Release $TAG" \
+              --notes "Automated release for $TAG" \
+              --prerelease
+            echo "Created new release for $TAG"
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: v999.9.9-ci-${{ github.sha }}
-          release_name: CI Build ${{ github.sha }}
-          draft: false
-          prerelease: true
 
       - name: Upload Release Assets
         run: |
+          TAG=${{ steps.get_tag.outputs.tag }}
           for artifact in artifacts/*/*.zip; do
             if [ -f "$artifact" ]; then
-              gh release upload v999.9.9-ci-${{ github.sha }} "$artifact" --clobber
+              gh release upload "$TAG" "$artifact" --clobber
+              echo "Uploaded $artifact to $TAG"
             fi
           done
         env:
