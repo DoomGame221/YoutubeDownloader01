@@ -50,10 +50,6 @@ jobs:
           - win-arm64
           - win-x86
           - win-x64
-#          - linux-arm64
-#          - linux-x64
-#          - osx-arm64
-#          - osx-x64
         bundle-ffmpeg:
           - true
           - false
@@ -113,10 +109,6 @@ jobs:
           - win-arm64
           - win-x86
           - win-x64
-#          - linux-arm64
-#          - linux-x64
-#          - osx-arm64
-#          - osx-x64
         bundle-ffmpeg:
           - true
           - false
@@ -134,7 +126,7 @@ jobs:
 
     permissions:
       actions: write
-      contents: write  # ต้องให้สิทธิ์เขียนเนื้อหาของ Repository ด้วย
+      contents: write
 
     steps:
       - name: Checkout
@@ -163,18 +155,42 @@ jobs:
         working-directory: YoutubeDownloader/
         run: zip -r ../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip .
 
+      # Create and push a new tag automatically
+      - name: Get latest tag
+        id: get_latest_tag
+        run: |
+          TAG=$(git describe --tags --abbrev=0)
+          echo "Latest tag is $TAG"
+          echo "TAG=$TAG" >> $GITHUB_ENV
+
+      - name: Increment version
+        id: increment_version
+        run: |
+          IFS='.' read -r -a version_parts <<< "${{ env.TAG }}"
+          patch=${version_parts[2]}
+          new_patch=$((patch + 1))
+          new_version="${version_parts[0]}.${version_parts[1]}.$new_patch"
+          echo "New version is $new_version"
+          echo "VERSION=$new_version" >> $GITHUB_ENV
+
+      - name: Create new git tag
+        run: |
+          git tag ${{ env.VERSION }}
+          git push origin ${{ env.VERSION }}
+
       - name: Create GitHub release
         id: create_release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ env.VERSION }}
           files: "../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"
 
       - name: Upload release asset
         uses: actions/upload-release-asset@v1
         with:
-          upload_url: ${{ steps.create_release.outputs.upload_url }}  # ใช้ URL สำหรับอัปโหลด Release
-          asset_path: "../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"  # ไฟล์ที่ต้องการอัปโหลด
-          asset_name: "${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"  # ชื่อไฟล์ใน Release
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: "../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"
+          asset_name: "${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"
           asset_content_type: application/zip
 
   notify:
