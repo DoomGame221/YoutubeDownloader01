@@ -42,7 +42,7 @@ public partial class DownloadMultipleSetupViewModel(
         [Container.Mp4, Container.WebM, Container.Mp3, new Container("ogg")];
 
     public IReadOnlyList<VideoQualityPreference> AvailableVideoQualityPreferences { get; } =
-        Enum.GetValues<VideoQualityPreference>().Reverse().ToArray();
+        Enum.GetValues<VideoQualityPreference>().Cast<VideoQualityPreference>().Reverse().ToArray();
 
     [RelayCommand]
     private void Initialize()
