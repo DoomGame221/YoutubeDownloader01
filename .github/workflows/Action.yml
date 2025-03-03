@@ -2,9 +2,6 @@ name: Action
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "*"
 
 
 env:
@@ -96,7 +93,7 @@ jobs:
       - name: Publish app
         run: >
           dotnet publish YoutubeDownloader
-          -p:Version=${{ github.ref_type == 'tag' && github.ref_name || format('999.9.9-ci-{0}', github.sha) }}
+          -p:Version=${{ github.ref_name || format('999.9.9-ci-{0}', github.sha) }}
           -p:CSharpier_Bypass=true
           --output YoutubeDownloader/bin/publish
           --configuration Release
@@ -111,8 +108,6 @@ jobs:
           if-no-files-found: error
 
   release:
-    if: ${{ github.ref_type == 'tag' }}
-
     needs:
       - format
       - pack
@@ -132,7 +127,6 @@ jobs:
           --repo ${{ github.event.repository.full_name }}
           --title ${{ github.ref_name }}
           --generate-notes
-          --verify-tag
 
   deploy:
     needs: release
