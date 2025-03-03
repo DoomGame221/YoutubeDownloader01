@@ -12,7 +12,8 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.generate_version.outputs.version }}
+      version: ${{ steps.generate_version.outputs.version }} # version ไม่มี v
+      tag_version: ${{ steps.generate_version.outputs.tag_version }} # version มี v
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
@@ -25,23 +26,27 @@ jobs:
           latest_tag=$(git tag --list 'v*' | sort -V | tail -n 1)
           
           if [ -z "$latest_tag" ]; then
-            new_version="v1.0.0"
+            version="1.0.0"
+            tag_version="v1.0.0"
           else
             version_num=${latest_tag#v}
             IFS='.' read -r major minor patch <<< "$version_num"
             new_patch=$((patch + 1))
-            new_version="v${major}.${minor}.${new_patch}"
+            version="${major}.${minor}.${new_patch}"
+            tag_version="v${major}.${minor}.${new_patch}"
           fi
           
-          echo "New version: $new_version"
-          echo "version=$new_version" >> $GITHUB_OUTPUT
+          echo "Version: $version"
+          echo "Tag version: $tag_version"
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "tag_version=$tag_version" >> $GITHUB_OUTPUT
 
       - name: Create and push tag
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git tag ${{ steps.generate_version.outputs.version }}
-          git push origin ${{ steps.generate_version.outputs.version }}
+          git tag ${{ steps.generate_version.outputs.tag_version }}
+          git push origin ${{ steps.generate_version.outputs.tag_version }}
 
   format:
     needs: version
@@ -115,7 +120,7 @@ jobs:
       - name: Publish app
         run: >
           dotnet publish YoutubeDownloader
-          -p:Version=${{ needs.version.outputs.version }}
+          -p:Version=${{ needs.version.outputs.version }} # ใช้ version ที่ไม่มี v
           -p:CSharpier_Bypass=true
           --output YoutubeDownloader/bin/publish
           --configuration Release
@@ -176,7 +181,7 @@ jobs:
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ needs.version.outputs.version }}
+          tag_name: ${{ needs.version.outputs.tag_version }} # ใช้ tag_version ที่มี v
           files: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip
           fail_on_unmatched_files: true
           generate_release_notes: true
@@ -201,6 +206,6 @@ jobs:
             {
               "username": "GitHub Actions",
               "avatar_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
-              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nVersion: ${{ needs.version.outputs.version }}\nดาวน์โหลดได้ที่: <https://github.com/DoomGame221/YoutubeDownloader01/releases/${{ needs.version.outputs.version }}>"
+              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nVersion: ${{ needs.version.outputs.tag_version }}\nดาวน์โหลดได้ที่: <https://github.com/DoomGame221/YoutubeDownloader01/releases/${{ needs.version.outputs.tag_version }}>"
             }
           retry-count: 5
