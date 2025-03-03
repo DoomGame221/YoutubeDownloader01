@@ -2,16 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "*"
 
 env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
   DOTNET_NOLOGO: true
   DOTNET_CLI_TELEMETRY_OPTOUT: true
-  ACTIONS_STEP_DEBUG: true
-  ACTIONS_RUNNER_DEBUG: true
 
 jobs:
   format:
@@ -19,27 +14,35 @@ jobs:
     timeout-minutes: 10
 
     permissions:
-      actions: read
-      contents: write
+      contents: read
 
     steps:
-
-      - name: Check GitHub CLI
-        run: gh --version
-  
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4.2.2
 
       - name: Install .NET
-        uses: actions/setup-dotnet@3951f0dfe7a07e2313ec93c75700083e2005cbab # v4.3.0
+        uses: actions/setup-dotnet@v4.3.0
         with:
           dotnet-version: 9.0.x
 
+      - name: Build
+        run: >
+          dotnet build
+          -p:CSharpier_Bypass=true
+          --configuration Release
+
       - name: Verify formatting
+        id: verify
         run: >
           dotnet build
           -t:CSharpierFormat
           --configuration Release
+          --no-restore
+
+      - name: Report issues
+        if: ${{ failure() && steps.verify.outcome == 'failure' }}
+        run: echo "::error title=Bad formatting::Formatting issues detected. Please build the solution locally to fix them."
+
   pack:
     strategy:
       matrix:
@@ -60,7 +63,6 @@ jobs:
           - bundle-ffmpeg: false
             artifact-name-base: YoutubeDownloader.Bare
         exclude:
-          # FFmpeg builds for these platforms are not easily available
           - bundle-ffmpeg: true
             rid: linux-arm64
 
@@ -73,10 +75,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        uses: actions/checkout@v4.2.2
 
       - name: Install .NET
-        uses: actions/setup-dotnet@3951f0dfe7a07e2313ec93c75700083e2005cbab # v4.3.0
+        uses: actions/setup-dotnet@v4.3.0
         with:
           dotnet-version: 9.0.x
 
@@ -88,44 +90,22 @@ jobs:
       - name: Publish app
         run: >
           dotnet publish YoutubeDownloader
-          -p:Version=${{ github.ref_type == 'tag' && github.ref_name || format('999.9.9-ci-{0}', github.sha) }}
+          -p:Version=999.9.9-ci-${{ github.sha }}
           -p:CSharpier_Bypass=true
           --output YoutubeDownloader/bin/publish
           --configuration Release
           --runtime ${{ matrix.rid }}
           --self-contained
+
       - name: Upload artifacts
-        uses: actions/upload-artifact@65c4c4a1ddee5b72f698fdd19549f0f0fb45cf08 # v4.6.0
+        uses: actions/upload-artifact@v4.6.0
         with:
           name: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}
           path: YoutubeDownloader/bin/publish
           if-no-files-found: error
 
-  release:
-    if: ${{ github.ref_type == 'tag' }}
-
-    needs:
-      - format
-      - pack
-
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    permissions:
-      contents: write
-
-    steps:
-      - name: Create release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          gh release create $(date +%Y%m%d-%H%M%S)
-          --repo ${{ github.repository }}
-          --title "Auto Release $(date +%Y-%m-%d)"
-          --generate-notes
-          
   deploy:
-    needs: release
+    needs: pack
 
     strategy:
       matrix:
@@ -146,7 +126,6 @@ jobs:
           - bundle-ffmpeg: false
             artifact-name-base: YoutubeDownloader.Bare
         exclude:
-          # FFmpeg builds for these platforms are not easily available
           - bundle-ffmpeg: true
             rid: linux-arm64
 
@@ -154,12 +133,20 @@ jobs:
     timeout-minutes: 10
 
     permissions:
-      actions: read
-      contents: write
+      actions: write
+      contents: write  # ต้องให้สิทธิ์เขียนเนื้อหาของ Repository ด้วย
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Install .NET
+        uses: actions/setup-dotnet@v4.3.0
+        with:
+          dotnet-version: 9.0.x
+
       - name: Download artifacts
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v4.1.8
+        uses: actions/download-artifact@v4.1.8
         with:
           name: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}
           path: YoutubeDownloader/
@@ -173,17 +160,23 @@ jobs:
         run: chmod +x YoutubeDownloader/ffmpeg
 
       - name: Create package
-        # Change into the artifacts directory to avoid including the directory itself in the zip archive
         working-directory: YoutubeDownloader/
         run: zip -r ../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip .
 
+      - name: Create GitHub release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: "../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"
+
       - name: Upload release asset
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: >
-          gh release upload ${{ github.ref_name }}
-          ${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip
-          --repo ${{ github.event.repository.full_name }}
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}  # ใช้ URL สำหรับอัปโหลด Release
+          asset_path: "../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"  # ไฟล์ที่ต้องการอัปโหลด
+          asset_name: "${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip"  # ชื่อไฟล์ใน Release
+          asset_content_type: application/zip
+
   notify:
     needs: deploy
     runs-on: ubuntu-latest
