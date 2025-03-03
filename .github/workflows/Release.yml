@@ -12,46 +12,39 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.generate_version.outputs.version }}
-      tag_version: ${{ steps.generate_version.outputs.tag_version }}
+      tag: ${{ steps.get_version.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.2
         with:
-          fetch-depth: 0
+          fetch-depth: 0 # ดึง history ทั้งหมดเพื่อตรวจสอบ tags
 
-      - name: Generate version
-        id: generate_version
+      - name: Calculate next version
+        id: get_version
         run: |
-          latest_tag=$(git tag --list 'v*' | sort -V | tail -n 1)
+          # หา tag ล่าสุด
+          LATEST_TAG=$(git tag --list 'v*' | sort -V | tail -n 1)
           
-          if [ -z "$latest_tag" ]; then
-            version="1.0.0"
-            tag_version="v1.0.0"
+          if [ -z "$LATEST_TAG" ]; then
+            # ถ้าไม่มี tag เริ่มที่ v1.0.0
+            NEW_TAG="v1.0.0"
           else
-            version_num=${latest_tag#v}
-            IFS='.' read -r major minor patch <<< "$version_num"
-            new_patch=$((patch + 1))
-            version="${major}.${minor}.${new_patch}"
-            tag_version="v${major}.${minor}.${new_patch}"
+            # แยก version เป็นส่วนๆ
+            VERSION=${LATEST_TAG#v}
+            IFS='.' read -r MAJOR MINOR PATCH <<< "$VERSION"
+            
+            # เพิ่ม PATCH version
+            NEW_PATCH=$((PATCH + 1))
+            NEW_TAG="v$MAJOR.$MINOR.$NEW_PATCH"
           fi
           
-          echo "Version: $version"
-          echo "Tag version: $tag_version"
-          echo "version=$version" >> $GITHUB_OUTPUT
-          echo "tag_version=$tag_version" >> $GITHUB_OUTPUT
-
-      - name: Create and push tag
-        run: |
-          git config user.name "GitHub Actions"
-          git config user.email "actions@github.com"
-          git tag ${{ steps.generate_version.outputs.tag_version }}
-          git push origin ${{ steps.generate_version.outputs.tag_version }}
+          echo "New tag: $NEW_TAG"
+          echo "tag=$NEW_TAG" >> $GITHUB_OUTPUT
 
   format:
     needs: version
     runs-on: ubuntu-latest
-    timeout-minutes: 15 # เพิ่ม timeout
+    timeout-minutes: 10
     permissions:
       contents: read
     steps:
@@ -64,20 +57,23 @@ jobs:
           dotnet-version: 9.0.x
 
       - name: Build
-        run: |
-          dotnet build -p:CSharpier_Bypass=true --configuration Release -v detailed # เพิ่ม verbosity
-
+        run: >
+          dotnet build
+          -p:CSharpier_Bypass=true
+          --configuration Release
       - name: Verify formatting
         id: verify
-        run: |
-          dotnet build -t:CSharpierFormat --configuration Release --no-restore -v detailed
-
+        run: >
+          dotnet build
+          -t:CSharpierFormat
+          --configuration Release
+          --no-restore
       - name: Report issues
         if: ${{ failure() && steps.verify.outcome == 'failure' }}
         run: echo "::error title=Bad formatting::Formatting issues detected. Please build the solution locally to fix them."
 
   pack:
-    needs: [version, format]
+    needs: version
     strategy:
       matrix:
         rid:
@@ -93,8 +89,8 @@ jobs:
           - bundle-ffmpeg: false
             artifact-name-base: YoutubeDownloader.Bare
 
-    runs-on: windows-latest # ใช้ windows-latest เฉพาะ เพื่อความเสถียรกับ Windows RID
-    timeout-minutes: 20 # เพิ่ม timeout ให้เพียงพอ
+    runs-on: ${{ startsWith(matrix.rid, 'win-') && 'windows-latest' || 'ubuntu-latest' }}
+    timeout-minutes: 10
     permissions:
       actions: write
       contents: read
@@ -113,16 +109,14 @@ jobs:
         run: YoutubeDownloader/DownloadFFmpeg.ps1 -platform ${{ matrix.rid }}
 
       - name: Publish app
-        run: |
-          dotnet publish YoutubeDownloader `
-            -p:Version=${{ needs.version.outputs.version }} `
-            -p:CSharpier_Bypass=true `
-            --output YoutubeDownloader/bin/publish `
-            --configuration Release `
-            --runtime ${{ matrix.rid }} `
-            --self-contained `
-            -v detailed # เพิ่ม verbosity เพื่อ debug
-
+        run: >
+          dotnet publish YoutubeDownloader
+          -p:Version=${{ needs.version.outputs.tag }}
+          -p:CSharpier_Bypass=true
+          --output YoutubeDownloader/bin/publish
+          --configuration Release
+          --runtime ${{ matrix.rid }}
+          --self-contained
       - name: Upload artifacts
         uses: actions/upload-artifact@v4.6.0
         with:
@@ -131,7 +125,7 @@ jobs:
           if-no-files-found: error
 
   deploy:
-    needs: pack
+    needs: [version, pack]
     strategy:
       matrix:
         rid:
@@ -148,7 +142,7 @@ jobs:
             artifact-name-base: YoutubeDownloader.Bare
 
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     permissions:
       actions: read
       contents: write
@@ -162,19 +156,27 @@ jobs:
           name: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}
           path: YoutubeDownloader/
 
+      - name: Set permissions (app)
+        if: ${{ !startsWith(matrix.rid, 'win-') }}
+        run: chmod +x YoutubeDownloader/YoutubeDownloader
+
+      - name: Set permissions (FFmpeg)
+        if: ${{ !startsWith(matrix.rid, 'win-') && matrix.bundle-ffmpeg }}
+        run: chmod +x YoutubeDownloader/ffmpeg
+
       - name: Create package
         working-directory: YoutubeDownloader/
         run: zip -r ../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip .
 
-      - name: Upload release asset
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ needs.version.outputs.tag_version }}
-          files: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip
-          fail_on_unmatched_files: true
-          generate_release_notes: true
+      - name: Create Release and Upload Assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # สร้าง release และ tag
+          gh release create ${{ needs.version.outputs.tag }} \
+            --title "${{ needs.version.outputs.tag }}" \
+            --generate-notes \
+            ${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip
 
   notify:
     needs: [version, deploy]
@@ -194,6 +196,6 @@ jobs:
             {
               "username": "GitHub Actions",
               "avatar_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
-              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nVersion: ${{ needs.version.outputs.tag_version }}\nดาวน์โหลดได้ที่: <https://github.com/DoomGame221/YoutubeDownloader01/releases/${{ needs.version.outputs.tag_version }}>"
+              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nดาวน์โหลดเวอร์ชันล่าสุดได้ที่: [คลิกที่นี่](https://github.com/DoomGame221/YoutubeDownloader01/releases/${{ needs.version.outputs.tag }})"
             }
           retry-count: 5
