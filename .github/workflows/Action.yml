@@ -30,7 +30,6 @@ jobs:
           dotnet build
           -p:CSharpier_Bypass=true
           --configuration Release
-
       - name: Verify formatting
         id: verify
         run: >
@@ -38,7 +37,6 @@ jobs:
           -t:CSharpierFormat
           --configuration Release
           --no-restore
-
       - name: Report issues
         if: ${{ failure() && steps.verify.outcome == 'failure' }}
         run: echo "::error title=Bad formatting::Formatting issues detected. Please build the solution locally to fix them."
@@ -96,7 +94,6 @@ jobs:
           --configuration Release
           --runtime ${{ matrix.rid }}
           --self-contained
-
       - name: Upload artifacts
         uses: actions/upload-artifact@v4.6.0
         with:
@@ -160,7 +157,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
           echo "Release upload skipped since tag-based releases have been removed."
-
   notify:
     needs: deploy
     runs-on: ubuntu-latest
@@ -171,7 +167,7 @@ jobs:
 
     steps:
       - name: Notify Discord
-        uses: tyrrrz/action-http-request@1dd7ad841a34b9299f3741f7c7399f9feefdfb08 # 1.1.3
+        uses: tyrrrz/action-http-request@1.1.3
         with:
           url: ${{ secrets.DISCORD_WEBHOOK }}
           method: POST
@@ -179,7 +175,8 @@ jobs:
             Content-Type: application/json; charset=UTF-8
           body: |
             {
-              "avatar_url": "https://raw.githubusercontent.com/${{ github.event.repository.full_name }}/${{ github.ref_name }}/favicon.png",
-              "content": "[**${{ github.event.repository.name }}**](<${{ github.event.repository.html_url }}) v${{ github.ref_name }} has been released! Here's the latest app: [Download the app here](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/YoutubeDownloader.${{ matrix.rid }}.zip)"
+              "username": "GitHub Actions",
+              "avatar_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
+              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nดาวน์โหลดเวอร์ชันล่าสุดได้ที่: [คลิกที่นี่](<https://github.com/${{ github.repository }}/releases/latest>)"
             }
           retry-count: 5
