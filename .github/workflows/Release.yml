@@ -126,8 +126,58 @@ jobs:
           --runtime ${{ matrix.rid }}
           --self-contained
 
-  notify:
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4.6.0
+        with:
+          name: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}
+          path: YoutubeDownloader/bin/publish
+          if-no-files-found: error
+
+  deploy:
     needs: pack
+    Strategy:
+      matrix:
+        rid:
+          - win-arm64
+          - win-x86
+          - win-x64
+        bundle-ffmpeg:
+          - true
+          - false
+        include:
+          - bundle-ffmpeg: true
+            artifact-name-base: YoutubeDownloader
+          - bundle-ffmpeg: false
+            artifact-name-base: YoutubeDownloader.Bare
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.2
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4.1.8
+        with:
+          name: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}
+          path: YoutubeDownloader/
+
+      - name: Create zip package
+        working-directory: YoutubeDownloader/
+        run: zip -r ../${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip .
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.version }}
+          files: ${{ matrix.artifact-name-base }}.${{ matrix.rid }}.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  notify:
+    needs: deploy
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
