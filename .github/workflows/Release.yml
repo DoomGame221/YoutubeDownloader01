@@ -134,12 +134,13 @@ jobs:
         run: |
           TAG=${{ steps.get_tag.outputs.tag }}
           if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG exists, using existing release"
+            echo "Tag $TAG exists, updating to latest release"
+            gh release edit "$TAG" --draft=false --prerelease=false
           else
             gh release create "$TAG" \
               --title "Release $TAG" \
-              --notes "Automated release for $TAG" \
-              --prerelease
+              --notes "YouTube Downloader Version: for $TAG" \
+              --latest
             echo "Created new release for $TAG"
           fi
         env:
@@ -175,6 +176,6 @@ jobs:
             {
               "username": "GitHub Actions",
               "avatar_url": "https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png",
-              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nดาวน์โหลดเวอร์ชันล่าสุดได้ที่: [คลิกที่นี่](<https://github.com/${{ github.repository }}/releases/latest>)"
+              "content": "**YoutubeDownloader01 มีอัปเดตใหม่! 🎉**\nดาวน์โหลดเวอร์ชันล่าสุด $TAG ได้ที่: [คลิกที่นี่](<https://github.com/${{ github.repository }}/releases/latest>)"
             }
           retry-count: 5
