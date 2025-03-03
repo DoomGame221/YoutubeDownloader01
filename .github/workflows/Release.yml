@@ -109,14 +109,16 @@ jobs:
         run: YoutubeDownloader/DownloadFFmpeg.ps1 -platform ${{ matrix.rid }}
 
       - name: Publish app
-        run: >
-          dotnet publish YoutubeDownloader
-          -p:Version=${{ needs.version.outputs.tag }}
-          -p:CSharpier_Bypass=true
-          --output YoutubeDownloader/bin/publish
-          --configuration Release
-          --runtime ${{ matrix.rid }}
-          --self-contained
+        run: |
+          VERSION=${{ needs.version.outputs.tag }}
+          CLEAN_VERSION=${VERSION#v}
+          dotnet publish YoutubeDownloader \
+            -p:Version=$CLEAN_VERSION \
+            -p:CSharpier_Bypass=true \
+            --output YoutubeDownloader/bin/publish \
+            --configuration Release \
+            --runtime ${{ matrix.rid }} \
+            --self-contained
       - name: Upload artifacts
         uses: actions/upload-artifact@v4.6.0
         with:
